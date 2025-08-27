@@ -34,7 +34,7 @@ class LabelManager:
         return BlockLabel(str(self.nextTempLabelId))
 
 
-class TACFuncEmitter(TACVisitor):
+class TACFuncEmitter:
     """
     Translates a minidecaf (AST) function into low-level TAC function.
     """
@@ -44,7 +44,7 @@ class TACFuncEmitter(TACVisitor):
     ) -> None:
         self.labelManager = labelManager
         self.func = TACFunc(entry, numArgs)
-        self.visitLabel(entry)
+        self.emitLabel(entry)
         self.nextTempId = 0
 
         self.continueLabelStack = []
@@ -64,52 +64,51 @@ class TACFuncEmitter(TACVisitor):
     def getUsedTemp(self) -> int:
         return self.nextTempId
 
-    # In fact, the following methods can be named 'appendXXX' rather than 'visitXXX'.
-    # E.g., by calling 'visitAssignment', you add an assignment instruction at the end of current function.
-    def visitAssignment(self, dst: Temp, src: Temp) -> Temp:
+    # E.g., by calling 'emitAssignment', you add an assignment instruction at the end of current function.
+    def emitAssignment(self, dst: Temp, src: Temp) -> Temp:
         self.func.add(Assign(dst, src))
         return src
 
-    def visitLoad(self, value: Union[int, str]) -> Temp:
+    def emitLoad(self, value: Union[int, str]) -> Temp:
         temp = self.freshTemp()
         self.func.add(LoadImm4(temp, value))
         return temp
 
-    def visitUnary(self, op: UnaryOp, operand: Temp) -> Temp:
+    def emitUnary(self, op: UnaryOp, operand: Temp) -> Temp:
         temp = self.freshTemp()
         self.func.add(Unary(op, temp, operand))
         return temp
 
-    def visitUnarySelf(self, op: UnaryOp, operand: Temp) -> None:
+    def emitUnarySelf(self, op: UnaryOp, operand: Temp) -> None:
         self.func.add(Unary(op, operand, operand))
 
-    def visitBinary(self, op: BinaryOp, lhs: Temp, rhs: Temp) -> Temp:
+    def emitBinary(self, op: BinaryOp, lhs: Temp, rhs: Temp) -> Temp:
         temp = self.freshTemp()
         self.func.add(Binary(op, temp, lhs, rhs))
         return temp
 
-    def visitBinarySelf(self, op: BinaryOp, lhs: Temp, rhs: Temp) -> None:
+    def emitBinarySelf(self, op: BinaryOp, lhs: Temp, rhs: Temp) -> None:
         self.func.add(Binary(op, lhs, lhs, rhs))
 
-    def visitBranch(self, target: Label) -> None:
+    def emitBranch(self, target: Label) -> None:
         self.func.add(Branch(target))
 
-    def visitCondBranch(self, op: CondBranchOp, cond: Temp, target: Label) -> None:
+    def emitCondBranch(self, op: CondBranchOp, cond: Temp, target: Label) -> None:
         self.func.add(CondBranch(op, cond, target))
 
-    def visitReturn(self, value: Optional[Temp]) -> None:
+    def emitReturn(self, value: Optional[Temp]) -> None:
         self.func.add(Return(value))
 
-    def visitLabel(self, label: Label) -> None:
+    def emitLabel(self, label: Label) -> None:
         self.func.add(Mark(label))
 
-    def visitMemo(self, content: str) -> None:
+    def emitMemo(self, content: str) -> None:
         self.func.add(Memo(content))
 
-    def visitRaw(self, instr: TACInstr) -> None:
+    def emitRaw(self, instr: TACInstr) -> None:
         self.func.add(instr)
 
-    def visitEnd(self) -> TACFunc:
+    def emitEnd(self) -> TACFunc:
         if (len(self.func.instrSeq) == 0) or (not self.func.instrSeq[-1].isReturn()):
             self.func.add(Return(None))
         self.func.tempUsed = self.getUsedTemp()
@@ -134,7 +133,7 @@ class TACFuncEmitter(TACVisitor):
         return self.continueLabelStack[-1]
 
 
-class TACGen(Visitor[TACFuncEmitter, None]):
+class TACGen():
     # Entry of this phase
     def transform(self, program: Program) -> TACProg:
         labelManager = LabelManager()
@@ -143,7 +142,7 @@ class TACGen(Visitor[TACFuncEmitter, None]):
             # in step9, you need to use real parameter count
             emitter = TACFuncEmitter(FuncLabel(funcName), 0, labelManager)
             astFunc.body.accept(self, emitter)
-            tacFuncs.append(emitter.visitEnd())
+            tacFuncs.append(emitter.emitEnd())
         return TACProg(tacFuncs)
 
     def visitBlock(self, block: Block, mv: TACFuncEmitter) -> None:
@@ -152,10 +151,10 @@ class TACGen(Visitor[TACFuncEmitter, None]):
 
     def visitReturn(self, stmt: Return, mv: TACFuncEmitter) -> None:
         stmt.expr.accept(self, mv)
-        mv.visitReturn(stmt.expr.getattr("val"))
+        mv.emitReturn(stmt.expr.getattr("val"))
 
     def visitBreak(self, stmt: Break, mv: TACFuncEmitter) -> None:
-        mv.visitBranch(mv.getBreakLabel())
+        mv.emitBranch(mv.getBreakLabel())
 
     def visitIdentifier(self, ident: Identifier, mv: TACFuncEmitter) -> None:
         """
@@ -167,14 +166,14 @@ class TACGen(Visitor[TACFuncEmitter, None]):
         """
         1. Get the 'symbol' attribute of decl.
         2. Use mv.freshTemp to get a new temp variable for this symbol.
-        3. If the declaration has an initial value, use mv.visitAssignment to set it.
+        3. If the declaration has an initial value, use mv.emitAssignment to set it.
         """
         raise NotImplementedError
 
     def visitAssignment(self, expr: Assignment, mv: TACFuncEmitter) -> None:
         """
         1. Visit the right hand side of expr, and get the temp variable of left hand side.
-        2. Use mv.visitAssignment to emit an assignment instruction.
+        2. Use mv.emitAssignment to emit an assignment instruction.
         3. Set the 'val' attribute of expr as the value of assignment instruction.
         """
         raise NotImplementedError
@@ -184,22 +183,22 @@ class TACGen(Visitor[TACFuncEmitter, None]):
 
         if stmt.otherwise is NULL:
             skipLabel = mv.freshLabel()
-            mv.visitCondBranch(
+            mv.emitCondBranch(
                 tacop.CondBranchOp.BEQ, stmt.cond.getattr("val"), skipLabel
             )
             stmt.then.accept(self, mv)
-            mv.visitLabel(skipLabel)
+            mv.emitLabel(skipLabel)
         else:
             skipLabel = mv.freshLabel()
             exitLabel = mv.freshLabel()
-            mv.visitCondBranch(
+            mv.emitCondBranch(
                 tacop.CondBranchOp.BEQ, stmt.cond.getattr("val"), skipLabel
             )
             stmt.then.accept(self, mv)
-            mv.visitBranch(exitLabel)
-            mv.visitLabel(skipLabel)
+            mv.emitBranch(exitLabel)
+            mv.emitLabel(skipLabel)
             stmt.otherwise.accept(self, mv)
-            mv.visitLabel(exitLabel)
+            mv.emitLabel(exitLabel)
 
     def visitWhile(self, stmt: While, mv: TACFuncEmitter) -> None:
         beginLabel = mv.freshLabel()
@@ -207,14 +206,14 @@ class TACGen(Visitor[TACFuncEmitter, None]):
         breakLabel = mv.freshLabel()
         mv.openLoop(breakLabel, loopLabel)
 
-        mv.visitLabel(beginLabel)
+        mv.emitLabel(beginLabel)
         stmt.cond.accept(self, mv)
-        mv.visitCondBranch(tacop.CondBranchOp.BEQ, stmt.cond.getattr("val"), breakLabel)
+        mv.emitCondBranch(tacop.CondBranchOp.BEQ, stmt.cond.getattr("val"), breakLabel)
 
         stmt.body.accept(self, mv)
-        mv.visitLabel(loopLabel)
-        mv.visitBranch(beginLabel)
-        mv.visitLabel(breakLabel)
+        mv.emitLabel(loopLabel)
+        mv.emitBranch(beginLabel)
+        mv.emitLabel(breakLabel)
         mv.closeLoop()
 
     def visitUnary(self, expr: Unary, mv: TACFuncEmitter) -> None:
@@ -224,7 +223,7 @@ class TACGen(Visitor[TACFuncEmitter, None]):
             node.UnaryOp.Neg: tacop.TacUnaryOp.NEG,
             # You can add unary operations here.
         }[expr.op]
-        expr.setattr("val", mv.visitUnary(op, expr.operand.getattr("val")))
+        expr.setattr("val", mv.emitUnary(op, expr.operand.getattr("val")))
 
     def visitBinary(self, expr: Binary, mv: TACFuncEmitter) -> None:
         expr.lhs.accept(self, mv)
@@ -236,7 +235,7 @@ class TACGen(Visitor[TACFuncEmitter, None]):
             # You can add binary operations here.
         }[expr.op]
         expr.setattr(
-            "val", mv.visitBinary(op, expr.lhs.getattr("val"), expr.rhs.getattr("val"))
+            "val", mv.emitBinary(op, expr.lhs.getattr("val"), expr.rhs.getattr("val"))
         )
 
     def visitCondExpr(self, expr: ConditionExpression, mv: TACFuncEmitter) -> None:
@@ -246,4 +245,4 @@ class TACGen(Visitor[TACFuncEmitter, None]):
         raise NotImplementedError
 
     def visitIntLiteral(self, expr: IntLiteral, mv: TACFuncEmitter) -> None:
-        expr.setattr("val", mv.visitLoad(expr.value))
+        expr.setattr("val", mv.emitLoad(expr.value))
