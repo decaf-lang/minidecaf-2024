@@ -2,23 +2,23 @@
 
 ## 依赖
 
-- **Python >= 3.9**
+- **Python >= 3.10**
 - requirements.txt 里的 python 库，包括 ply 和 argparse。
 - RISC-V 运行环境（参见实验指导书）
 
 ## 下载 & 配置 & 运行
-以 python3.9 为例，其他版本请自行修改。
+以 python3.10 为例，其他版本请自行修改。
 ```
 # 下载
 git clone --recursive git@github.com:decaf-lang/minidecaf-2023.git
 # 配置
 cd minidecaf-2023
-python3.9 -m pip install -U pip #  升级Python3的默认包管理系统
-python3.9 -m pip install -r requirements.txt  ## 安装ply argparse软件包
+python3.10 -m pip install -U pip #  升级Python3的默认包管理系统
+python3.10 -m pip install -r requirements.txt  ## 安装ply argparse软件包
 # 运行编译器
-python3.9 main.py --input <testcase.c> [--riscv/--tac/--parse] 
+python3.10 main.py --input <testcase.c> [--riscv/--tac/--parse] 
 # 例1：编译 return_0.c，并生成AST（抽象语法树）
-python3.9 main.py --input minidecaf-tests/testcases/step1/return_0.c --parse
+python3.10 main.py --input minidecaf-tests/testcases/step1/return_0.c --parse
 Generating LALR tables
 program [
   function [
@@ -33,13 +33,13 @@ program [
 ]
 
 # 例2，编译 return_0.c，并生成TAC（三地址码）
- python3.9 main.py --input minidecaf-tests/testcases/step1/return_0.c --tac
+ python3.10 main.py --input minidecaf-tests/testcases/step1/return_0.c --tac
 FUNCTION<main>:
     _T0 = 0
     return _T0
 
 # 例3，编译 return_0.c，并生成RISC-V 32 汇编代码
- python3.9 main.py --input minidecaf-tests/testcases/step1/return_0.c --riscv
+ python3.10 main.py --input minidecaf-tests/testcases/step1/return_0.c --riscv
     .text
     .global main
 
